@@ -1,0 +1,21 @@
+services:
+  agent:
+    build: ./agent
+    ports:
+      - "8000:8000"
+    env_file:
+      # Optional: copy agent/.env.example to agent/.env to enable live
+      # CAMARA/Groq/Supabase/Twilio integrations. Everything works without it.
+      - path: ./agent/.env
+        required: false
+    environment:
+      CORS_ORIGINS: "http://localhost:3000"
+
+  web:
+    build: ./web
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_AGENT_API_URL: "http://localhost:8000"
+    depends_on:
+      - agent

@@ -1,0 +1,14 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+langgraph==1.2.11
+langchain-core==1.6.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+httpx==0.28.1
+groq==1.7.0
+supabase==2.31.0
+twilio==9.11.0
+python-dotenv==1.2.3
+sse-starlette==3.4.10
+pytest==9.1.1
+pytest-asyncio==1.4.0

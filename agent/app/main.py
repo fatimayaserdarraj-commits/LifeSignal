@@ -11,15 +11,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.background import start_background_tasks, stop_background_tasks
 from app.config import settings
-from app.routers import incidents, metrics, risk_zones
+from app.routers import audit, incidents, metrics, risk_zones
 from app.seed import ensure_seed_data
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await ensure_seed_data()
+    start_background_tasks()
     yield
+    stop_background_tasks()
 
 
 app = FastAPI(
@@ -44,6 +47,7 @@ app.add_middleware(
 app.include_router(incidents.router)
 app.include_router(risk_zones.router)
 app.include_router(metrics.router)
+app.include_router(audit.router)
 
 
 @app.get("/health")

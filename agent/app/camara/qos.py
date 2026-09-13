@@ -6,15 +6,17 @@ detected.
 """
 from __future__ import annotations
 
+from app.audit import log_event
 from app.camara.base import CamaraClientError, post_json
 from app.config import settings
 from app.models import Incident
 
 
 async def request_qos_boost(incident: Incident) -> dict:
+    result = None
     if settings.camara_live:
         try:
-            return await post_json(
+            result = await post_json(
                 "/qod/v0/sessions",
                 {
                     "device": {"area": {
@@ -27,11 +29,15 @@ async def request_qos_boost(incident: Incident) -> dict:
                 },
             )
         except (CamaraClientError, Exception):  # noqa: BLE001
-            pass
+            result = None
 
-    return {
-        "session_id": f"sim-qos-{incident.id}",
-        "status": "GRANTED",
-        "qos_profile": "QOS_E",
-        "mode": "simulate",
-    }
+    if result is None:
+        result = {
+            "session_id": f"sim-qos-{incident.id}",
+            "status": "GRANTED",
+            "qos_profile": "QOS_E",
+            "mode": "simulate",
+        }
+
+    await log_event("camara.qos", incident.id, {"mode": result.get("mode", "live"), "response": result})
+    return result

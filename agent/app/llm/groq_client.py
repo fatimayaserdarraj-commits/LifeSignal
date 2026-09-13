@@ -8,24 +8,33 @@ an LLM call or an API outage.
 """
 from __future__ import annotations
 
+import asyncio
+
 from app.config import settings
+
+_REQUEST_TIMEOUT_SECONDS = 8.0
 
 _SYSTEM_PROMPT = (
     "You are LifeSignal, an AI agent assisting a fire incident commander. "
     "Given live network-derived occupancy signals, write ONE short, plain-English "
     "situational update (max 30 words) for the commander. Be concrete: cite the "
-    "occupant count, how many people just exited, and congestion/QoS status if "
-    "notable. No preamble, no markdown, just the sentence."
+    "current occupant count out of the unique devices ever detected, how many "
+    "people just exited, and congestion/QoS status if notable. occupant_count is "
+    "how many are confirmed inside right now; unique_devices_detected is the "
+    "total ever seen in the zone (the ceiling exits are counted against) -- "
+    "never imply more people exited than unique_devices_detected. No preamble, "
+    "no markdown, just the sentence."
 )
 
 
 def _template_fallback(context: dict) -> str:
     occupant_count = context["occupant_count"]
+    unique_devices = context.get("unique_devices_detected", occupant_count)
     exited = context["devices_exited_recent"]
     congestion = context["congestion_level"]
     qos_active = context["qos_boost_active"]
 
-    parts = [f"{occupant_count} device{'s' if occupant_count != 1 else ''} detected in the geofence."]
+    parts = [f"{occupant_count} of {unique_devices} detected device{'s' if unique_devices != 1 else ''} confirmed inside."]
     if exited:
         parts.append(f"{exited} exited in the last interval.")
     if qos_active:
@@ -38,30 +47,45 @@ def _template_fallback(context: dict) -> str:
 
 
 async def generate_reasoning(context: dict) -> str:
-    """context keys: occupant_count, devices_exited_recent, congestion_level, qos_boost_active, tick"""
-    if not settings.groq_enabled:
-        return _template_fallback(context)
+    """context keys: occupant_count, devices_exited_recent, congestion_level, qos_boost_active, tick
 
-    try:
-        from groq import AsyncGroq
+    Fallback chain: Groq (primary) -> Gemini Flash (secondary) -> deterministic
+    template, so the reasoning trace never blocks on a single provider outage.
+    """
+    if settings.groq_enabled:
+        try:
+            from groq import AsyncGroq
 
-        client = AsyncGroq(api_key=settings.groq_api_key)
-        user_prompt = (
-            f"tick={context['tick']} occupant_count={context['occupant_count']} "
-            f"devices_exited_recent={context['devices_exited_recent']} "
-            f"congestion_level={context['congestion_level']} "
-            f"qos_boost_active={context['qos_boost_active']}"
-        )
-        response = await client.chat.completions.create(
-            model=settings.groq_model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=80,
-            temperature=0.4,
-        )
-        text = response.choices[0].message.content
-        return text.strip() if text else _template_fallback(context)
-    except Exception:  # noqa: BLE001 - live LLM failure must never break the incident loop
-        return _template_fallback(context)
+            client = AsyncGroq(api_key=settings.groq_api_key)
+            user_prompt = (
+                f"tick={context['tick']} occupant_count={context['occupant_count']} "
+                f"unique_devices_detected={context.get('unique_devices_detected', context['occupant_count'])} "
+                f"devices_exited_recent={context['devices_exited_recent']} "
+                f"congestion_level={context['congestion_level']} "
+                f"qos_boost_active={context['qos_boost_active']}"
+            )
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model=settings.groq_model,
+                    messages=[
+                        {"role": "system", "content": _SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    max_tokens=80,
+                    temperature=0.4,
+                ),
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
+            text = response.choices[0].message.content
+            if text and text.strip():
+                return text.strip()
+        except Exception:  # noqa: BLE001 - live LLM failure must never break the incident loop
+            pass
+
+    from app.llm.gemini_client import generate_reasoning as gemini_generate_reasoning
+
+    gemini_text = await gemini_generate_reasoning(context)
+    if gemini_text:
+        return gemini_text
+
+    return _template_fallback(context)

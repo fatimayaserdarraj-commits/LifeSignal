@@ -27,6 +27,7 @@ class ReasoningEntry(BaseModel):
     timestamp: datetime = Field(default_factory=_now)
     message: str
     occupant_count: int
+    unique_devices_detected: int = 0
     devices_exited_recent: int = 0
     congestion_level: float | None = None
     qos_boost_active: bool = False
@@ -44,6 +45,23 @@ class IncidentCreate(BaseModel):
 
 
 class Incident(BaseModel):
+    """occupant_count, unique_devices_detected, and devices_exited_total are
+    three distinct quantities, not interchangeable "how many people" numbers:
+
+    - occupant_count: devices confirmed reachable inside the geofence *right now*.
+    - unique_devices_detected: every unique device ever seen in the geofence
+      for this incident -- a running ceiling that only grows (no new arrivals
+      are modeled once a fire geofence is live), so it can never be smaller
+      than devices_exited_total + occupant_count.
+    - devices_exited_total: cumulative exit events (location-layer departures
+      from the geofence), bounded by unique_devices_detected by construction.
+
+    peak_occupant_count is a separate, softer metric: the highest single-tick
+    *confirmed-reachable* count, which can undercount unique_devices_detected
+    because reachability (device status) discounts stale/unreachable devices
+    independently each tick -- it is not the ceiling exits are bounded by.
+    """
+
     id: str = Field(default_factory=_id)
     label: str
     latitude: float
@@ -54,6 +72,7 @@ class Incident(BaseModel):
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     occupant_count: int = 0
+    unique_devices_detected: int = 0
     peak_occupant_count: int = 0
     devices_exited_total: int = 0
     congestion_level: float = 0.0

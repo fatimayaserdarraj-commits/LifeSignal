@@ -13,7 +13,6 @@ FROM node:20-slim AS runner
 WORKDIR /srv
 ENV NODE_ENV=production
 COPY --from=builder /srv/next.config.js ./
-COPY --from=builder /srv/public ./public
 COPY --from=builder /srv/.next ./.next
 COPY --from=builder /srv/node_modules ./node_modules
 COPY --from=builder /srv/package.json ./package.json

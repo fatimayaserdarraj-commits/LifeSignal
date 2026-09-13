@@ -1,10 +1,12 @@
 """The Risk Mapping Agent: incident + congestion history -> weak-zone risk scores.
 
-Runs on demand (triggered by a new resolved incident, or a manual refresh
-from the Planning Dashboard). It buckets historical incidents into a coarse
-lat/lon grid and scores each cell on how often fires occur there AND how
-badly the network struggles under load -- the combination civil-defense
-agencies should prioritize for infrastructure investment.
+Runs continuously in the background on a fixed interval (see
+app.background.risk_mapping_scheduler, started from the FastAPI lifespan),
+plus on demand for a manual refresh from the Planning Dashboard. It buckets
+historical incidents into a coarse lat/lon grid and scores each cell on how
+often fires occur there AND how badly the network struggles under load --
+the combination civil-defense agencies should prioritize for infrastructure
+investment.
 """
 from __future__ import annotations
 
@@ -13,9 +15,12 @@ from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 
+from app.audit import log_event
 from app.config import settings
 from app.db.supabase_client import list_incident_history
 from app.models import RiskZone
+
+_latest_zones: list[RiskZone] = []
 
 
 class RiskMappingState(TypedDict):
@@ -120,5 +125,22 @@ _risk_mapping_graph = build_risk_mapping_graph()
 
 
 async def run_risk_mapping_agent() -> list[RiskZone]:
+    global _latest_zones
     result = await _risk_mapping_graph.ainvoke({"history": [], "zones": []})
-    return result["zones"]
+    zones = result["zones"]
+    _latest_zones = zones
+    await log_event(
+        "risk_mapping.scan",
+        None,
+        {
+            "zones_identified": len(zones),
+            "high_risk_zones": sum(1 for z in zones if z.risk_score >= 0.66),
+        },
+    )
+    return zones
+
+
+def get_cached_zones() -> list[RiskZone]:
+    """Instant read for the Planning Dashboard; populated by the background
+    scheduler (app.background) and refreshed on every manual recompute."""
+    return _latest_zones

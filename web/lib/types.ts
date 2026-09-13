@@ -4,6 +4,7 @@ export interface ReasoningEntry {
   timestamp: string;
   message: string;
   occupant_count: number;
+  unique_devices_detected: number;
   devices_exited_recent: number;
   congestion_level: number | null;
   qos_boost_active: boolean;
@@ -15,10 +16,12 @@ export interface Incident {
   latitude: number;
   longitude: number;
   radius_meters: number;
+  initial_device_estimate: number | null;
   status: IncidentStatus;
   created_at: string;
   updated_at: string;
   occupant_count: number;
+  unique_devices_detected: number;
   peak_occupant_count: number;
   devices_exited_total: number;
   congestion_level: number;

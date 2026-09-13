@@ -16,7 +16,7 @@ export default function OccupancyCounter({ incident }: { incident: Incident }) {
         {incident.occupant_count}
       </div>
       <div className="mt-2 text-sm text-gray-400">
-        Peak {incident.peak_occupant_count} · {incident.devices_exited_total} exited
+        {incident.unique_devices_detected} unique devices detected · {incident.devices_exited_total} exited
       </div>
     </div>
   );

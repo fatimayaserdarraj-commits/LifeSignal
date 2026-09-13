@@ -7,6 +7,7 @@ import json
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
+from app.db.supabase_client import find_similar_incidents
 from app.graphs.occupancy_agent import run_occupancy_agent
 from app.models import Incident, IncidentCreate
 from app.state_store import get_incident, list_incidents, save_incident, subscribe, unsubscribe
@@ -52,6 +53,23 @@ async def get_incident_detail(incident_id: str) -> Incident:
     if incident is None:
         raise HTTPException(status_code=404, detail="Incident not found")
     return incident
+
+
+@router.get("/{incident_id}/similar")
+async def get_similar_incidents(incident_id: str) -> list[dict]:
+    """Semantic search (pgvector) over resolved incident history: 'have we
+    seen a fire like this before, and how did the network behave?' Returns
+    [] when GEMINI_API_KEY is unset -- semantic search is a nice-to-have."""
+    incident = get_incident(incident_id)
+    if incident is None:
+        raise HTTPException(status_code=404, detail="Incident not found")
+
+    reasoning_summary = " ".join(entry.message for entry in incident.reasoning_trace[-3:])
+    query_text = (
+        f"{incident.label}: peak occupant count {incident.peak_occupant_count}, "
+        f"average congestion {incident.congestion_level:.0%}. {reasoning_summary}"
+    )
+    return await find_similar_incidents(query_text)
 
 
 @router.get("/{incident_id}/stream")

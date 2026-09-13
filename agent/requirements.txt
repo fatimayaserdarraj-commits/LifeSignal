@@ -6,6 +6,7 @@ pydantic==2.13.5
 pydantic-settings==2.15.0
 httpx==0.28.1
 groq==1.7.0
+google-genai==1.28.0
 supabase==2.31.0
 twilio==9.11.0
 python-dotenv==1.2.3

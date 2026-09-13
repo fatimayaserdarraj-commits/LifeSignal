@@ -19,9 +19,13 @@ class Settings(BaseSettings):
     nokia_nac_base_url: str = "https://network-as-code.p-eu.rapidapi.com"
     nokia_nac_api_key: str | None = None
 
-    # --- LLM (Groq) -----------------------------------------------------
+    # --- LLM (Groq, primary) ---------------------------------------------
     groq_api_key: str | None = None
     groq_model: str = "llama-3.3-70b-versatile"
+
+    # --- LLM (Gemini, secondary fallback) ---------------------------------
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-flash-latest"
 
     # --- Supabase ---------------------------------------------------------
     supabase_url: str | None = None
@@ -38,6 +42,7 @@ class Settings(BaseSettings):
     occupancy_max_ticks: int = 40
     congestion_threshold: float = 0.7
     risk_zone_grid_size_km: float = 1.0
+    risk_mapping_interval_seconds: float = 300.0
 
     # --- App ------------------------------------------------------------
     cors_origins: str = "*"
@@ -49,6 +54,10 @@ class Settings(BaseSettings):
     @property
     def groq_enabled(self) -> bool:
         return bool(self.groq_api_key)
+
+    @property
+    def gemini_enabled(self) -> bool:
+        return bool(self.gemini_api_key)
 
     @property
     def supabase_enabled(self) -> bool:

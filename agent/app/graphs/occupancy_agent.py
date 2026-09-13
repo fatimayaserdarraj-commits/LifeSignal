@@ -22,6 +22,7 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from app.alerting.twilio_client import send_alert
+from app.audit import log_event
 from app.camara import congestion as congestion_api
 from app.camara import device_status as device_status_api
 from app.camara import geofencing as geofencing_api
@@ -80,6 +81,13 @@ async def _poll_signals(state: OccupancyState) -> OccupancyState:
     incident.occupant_count = reachable
     incident.peak_occupant_count = max(incident.peak_occupant_count, reachable)
     incident.devices_exited_total += state["devices_exited_recent"]
+    # Ceiling on "how many were ever inside": still-present devices (location
+    # layer) plus everyone confirmed to have exited so far. Using devices_in_area
+    # here (not the noisier reachable count) guarantees devices_exited_total can
+    # never outrun this number -- see Incident's docstring.
+    incident.unique_devices_detected = max(
+        incident.unique_devices_detected, devices_in_area + incident.devices_exited_total
+    )
     incident.congestion_level = congestion_result["congestion_score"]
     incident.updated_at = datetime.now(timezone.utc)
 
@@ -103,11 +111,21 @@ async def _manage_qos(state: OccupancyState) -> OccupancyState:
             f"LifeSignal: QoS boost requested for incident '{incident.label}' "
             f"(congestion {incident.congestion_level:.0%})."
         )
+        await log_event(
+            "decision.qos_boost_requested",
+            incident.id,
+            {"congestion_level": incident.congestion_level, "tick": state["tick"]},
+        )
         publish(incident.id, {"type": "qos", "qos_boost_active": True})
     elif incident.congestion_level < 0.35 and incident.qos_boost_active:
         # Congestion has eased; the boost naturally lapses.
         incident.qos_boost_active = False
         save_incident(incident)
+        await log_event(
+            "decision.qos_boost_lapsed",
+            incident.id,
+            {"congestion_level": incident.congestion_level, "tick": state["tick"]},
+        )
         publish(incident.id, {"type": "qos", "qos_boost_active": False})
 
     return state
@@ -121,6 +139,7 @@ async def _generate_reasoning(state: OccupancyState) -> OccupancyState:
         {
             "tick": state["tick"],
             "occupant_count": incident.occupant_count,
+            "unique_devices_detected": incident.unique_devices_detected,
             "devices_exited_recent": state["devices_exited_recent"],
             "congestion_level": incident.congestion_level,
             "qos_boost_active": incident.qos_boost_active,
@@ -129,12 +148,25 @@ async def _generate_reasoning(state: OccupancyState) -> OccupancyState:
     entry = ReasoningEntry(
         message=message,
         occupant_count=incident.occupant_count,
+        unique_devices_detected=incident.unique_devices_detected,
         devices_exited_recent=state["devices_exited_recent"],
         congestion_level=incident.congestion_level,
         qos_boost_active=incident.qos_boost_active,
     )
     incident.reasoning_trace.append(entry)
     save_incident(incident)
+    await log_event(
+        "estimate.occupancy",
+        incident.id,
+        {
+            "tick": state["tick"],
+            "occupant_count": incident.occupant_count,
+            "unique_devices_detected": incident.unique_devices_detected,
+            "devices_exited_recent": state["devices_exited_recent"],
+            "congestion_level": incident.congestion_level,
+            "message": message,
+        },
+    )
     publish(incident.id, {"type": "reasoning", "entry": entry.model_dump(mode="json")})
     publish(incident.id, {"type": "incident", "incident": incident.model_dump(mode="json")})
     return state
@@ -163,6 +195,8 @@ async def _resolve_incident(state: OccupancyState) -> OccupancyState:
     incident.updated_at = incident.resolved_at
     save_incident(incident)
 
+    reasoning_summary = " ".join(entry.message for entry in incident.reasoning_trace[-3:])
+
     await record_incident_history(
         {
             "id": incident.id,
@@ -173,7 +207,18 @@ async def _resolve_incident(state: OccupancyState) -> OccupancyState:
             "avg_congestion": incident.congestion_level,
             "qos_boost_used": incident.qos_boost_active or incident.qos_boost_requested_at is not None,
             "created_at": incident.created_at.isoformat(),
+            "reasoning_summary": reasoning_summary,
         }
+    )
+
+    await log_event(
+        "decision.incident_resolved",
+        incident.id,
+        {
+            "peak_occupant_count": incident.peak_occupant_count,
+            "devices_exited_total": incident.devices_exited_total,
+            "ticks": state["tick"],
+        },
     )
 
     publish(incident.id, {"type": "status", "status": incident.status.value})

@@ -34,8 +34,14 @@ export default function IncidentDetail({ initial }: { initial: Incident }) {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="h-80 overflow-hidden rounded-xl border border-border lg:col-span-2">
-          <GeofenceMap incident={incident} />
+        <div className="lg:col-span-2">
+          <div className="h-80 overflow-hidden rounded-xl border border-border">
+            <GeofenceMap incident={incident} />
+          </div>
+          <p className="mt-1.5 text-xs text-gray-500">
+            Device positions are an illustrative scatter within the geofence, not raw per-phone GPS —
+            CAMARA returns an aggregate device count for the zone.
+          </p>
         </div>
         <div className="flex flex-col gap-4">
           <OccupancyCounter incident={incident} />

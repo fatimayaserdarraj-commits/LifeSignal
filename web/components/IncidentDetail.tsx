@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { MapPin } from "lucide-react";
 import { useIncidentStream } from "@/lib/useIncidentStream";
 import type { Incident } from "@/lib/types";
 import OccupancyCounter from "./OccupancyCounter";
@@ -25,7 +26,8 @@ export default function IncidentDetail({ initial }: { initial: Incident }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold text-white">{incident.label}</h2>
-          <p className="text-sm text-gray-400">
+          <p className="flex items-center gap-1 text-sm text-gray-400">
+            <MapPin size={13} strokeWidth={2.25} className="text-gray-500" />
             {incident.latitude.toFixed(4)}, {incident.longitude.toFixed(4)} · geofence radius{" "}
             {Math.round(incident.radius_meters)}m
           </p>

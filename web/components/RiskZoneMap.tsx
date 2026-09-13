@@ -1,7 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
 import "leaflet/dist/leaflet.css";
-import { Circle, MapContainer, TileLayer, Tooltip } from "react-leaflet";
+import { Circle, MapContainer, TileLayer, Tooltip, useMap } from "react-leaflet";
 import type { RiskZone } from "@/lib/types";
 
 function colorFor(score: number): string {
@@ -10,11 +11,33 @@ function colorFor(score: number): string {
   return "#34D1BF";
 }
 
-export default function RiskZoneMap({ zones }: { zones: RiskZone[] }) {
+function FlyToZone({ zone }: { zone: RiskZone | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (zone) {
+      map.flyTo([zone.center_latitude, zone.center_longitude], 14, { duration: 0.9 });
+    }
+  }, [zone, map]);
+
+  return null;
+}
+
+export default function RiskZoneMap({
+  zones,
+  selectedZoneId,
+  onSelectZone,
+}: {
+  zones: RiskZone[];
+  selectedZoneId?: string | null;
+  onSelectZone?: (id: string) => void;
+}) {
   const center: [number, number] =
     zones.length > 0
       ? [zones[0].center_latitude, zones[0].center_longitude]
       : [25.2, 55.27];
+
+  const selectedZone = zones.find((z) => z.id === selectedZoneId) ?? null;
 
   return (
     <MapContainer
@@ -28,21 +51,28 @@ export default function RiskZoneMap({ zones }: { zones: RiskZone[] }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {zones.map((zone) => (
-        <Circle
-          key={zone.id}
-          center={[zone.center_latitude, zone.center_longitude]}
-          radius={600 + zone.risk_score * 900}
-          pathOptions={{
-            color: colorFor(zone.risk_score),
-            fillColor: colorFor(zone.risk_score),
-            fillOpacity: 0.25,
-            weight: 1.5,
-          }}
-        >
-          <Tooltip>{zone.label}</Tooltip>
-        </Circle>
-      ))}
+      <FlyToZone zone={selectedZone} />
+      {zones.map((zone) => {
+        const selected = zone.id === selectedZoneId;
+        return (
+          <Circle
+            key={zone.id}
+            center={[zone.center_latitude, zone.center_longitude]}
+            radius={600 + zone.risk_score * 900}
+            eventHandlers={{
+              click: () => onSelectZone?.(zone.id),
+            }}
+            pathOptions={{
+              color: colorFor(zone.risk_score),
+              fillColor: colorFor(zone.risk_score),
+              fillOpacity: selected ? 0.5 : 0.25,
+              weight: selected ? 3.5 : 1.5,
+            }}
+          >
+            <Tooltip permanent={selected}>{zone.label}</Tooltip>
+          </Circle>
+        );
+      })}
     </MapContainer>
   );
 }

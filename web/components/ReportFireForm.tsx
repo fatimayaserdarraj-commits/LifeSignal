@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Flame } from "lucide-react";
 import { createIncident } from "@/lib/api";
 import type { Incident } from "@/lib/types";
 
@@ -58,7 +59,8 @@ export default function ReportFireForm({ onCreated }: { onCreated: (incident: In
 
   return (
     <div className="rounded-xl border border-coral/30 bg-surface2 p-5">
-      <div className="text-xs font-semibold uppercase tracking-widest text-coral">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-coral">
+        <Flame size={14} strokeWidth={2.25} />
         Report a Fire
       </div>
       <p className="mt-1 text-sm text-gray-400">
